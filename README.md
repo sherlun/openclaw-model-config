@@ -116,7 +116,7 @@ npm start        # 启动 server.js，监听 3001
 |------|------|
 | OpenClaw 主配置 | `~/.openclaw/openclaw.json` |
 | 应用本地配置 | `~/.openclawModelConfig/config.json` |
-| 配置备份 | `~/.openclaw/backups/` |
+| 配置备份 | `~/.openclawModelConfig/backups/` |
 
 ---
 
@@ -172,17 +172,30 @@ release/
 
 ```javascript
 // electron-main.js
+```javascript
+// electron-main.js
+import { startServer } from './server.js'
+
 const isDev = !app.isPackaged
 const APP_URL = isDev ? 'http://localhost:5173' : 'http://localhost:3001'
 
 app.whenReady().then(async () => {
-  if (!isDev) await startServer()  // 打包模式内嵌启动 server.js
+  if (!isDev) {
+    try {
+      await startServer()
+    } catch (err) {
+      dialog.showErrorBox(启动失败, `后端服务启动失败：${err.message}`)
+      app.quit()
+      return
+    }
+  }
   createTray()
   createWindow()
 })
 ```
 
-同时将 `server.js` 的 `app.listen()` 封装为可导出的 `startServer()`，供 Electron 主进程调用。
+`server.js` 导出 `startServer()` 函数供 Electron 主进程调用，打包模式下内嵌启动 Express 后端。
+
 
 ---
 
@@ -290,7 +303,10 @@ openclaw-model-config-app/
 │   └── zip-release.ps1   # 生成 zip 压缩包
 ├── src/
 │   ├── App.jsx           # 主界面
+│   ├── App.jsx           # 主界面
 │   ├── api.js            # 前端 API 封装
+│   ├── main.jsx          # React 入口
+│   ├── index.css         # 全局样式
 │   └── presets.js        # 模型预设
 ├── dist/                 # Vite 构建输出
 ├── temp-electron/        # Electron 运行时（本地）
