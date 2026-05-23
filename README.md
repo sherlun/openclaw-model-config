@@ -1,4 +1,4 @@
-# OpenClaw Model Config
+﻿# OpenClaw Model Config
 
 OpenClaw 模型配置桌面工具，用于可视化管理 `~/.openclaw/openclaw.json` 中的模型提供商、模型列表、默认模型，并支持 Gateway 启停与配置导入。
 
@@ -43,7 +43,7 @@ OpenClaw 模型配置桌面工具，用于可视化管理 `~/.openclaw/openclaw.
 | 前端 | React 18 + Vite 5 |
 | 后端 | Express 4（读写本地配置文件） |
 | 桌面壳 | Electron 28.3.3 |
-| 打包 | electron-builder 25 |
+| 打包 | electron-builder 26 |
 
 ---
 
@@ -240,6 +240,16 @@ image icon.png must be at least 256x256
 
 **处理**：生成 `build-icon.png`（256×256），并在 `package.json` 的 `build.win.icon` 中引用。
 
+> **NSIS 安装包注意**：NSIS 要求图标为 `.ico` 格式。使用 PowerShell 将 PNG 转为 ICO：
+> ```powershell
+> Add-Type -AssemblyName System.Drawing
+> $bmp = New-Object System.Drawing.Bitmap("build-icon.png")
+> $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+> $fs = New-Object System.IO.FileStream("build-icon.ico", [System.IO.FileMode]::Create)
+> $icon.Save($fs); $fs.Close(); $icon.Dispose(); $bmp.Dispose()
+> ```
+> 然后在 `package.json` 中将 NSIS 相关图标引用改为 `.ico`。
+
 PowerShell 扩图示例：
 
 ```powershell
@@ -282,13 +292,16 @@ ERROR: Cannot create symbolic link : 客户端没有所需的特权
 dial tcp ... connectex: A connection attempt failed
 ```
 
-**原因**：`portable` 和 `nsis` 目标需要额外下载 NSIS 工具，网络不通时会失败。
+**原因**：`portable` 和 `nsis` 目标需要额外下载 NSIS 工具，国内网络环境无法直接访问 GitHub Releases。
 
 **处理**：
 
-- 使用 `dir` 目标（`npm run pack`），输出 `win-unpacked` 目录 + zip，不依赖 NSIS
-- 或配置代理 / 重试 `npm run pack:portable`
-- 也可手动从 [electron-builder-binaries](https://github.com/electron-userland/electron-builder-binaries/releases) 下载 NSIS 放入缓存目录
+1. 从 [electron-builder-binaries releases](https://github.com/electron-userland/electron-builder-binaries/releases/tag/nsis-3.0.4.1) 下载 `nsis-3.0.4.1.7z`（需要挂代理或 VPN）
+2. 运行缓存脚本：`node scripts/setup-nsis-cache.cjs <下载的.7z文件>`
+3. 脚本会自动计算 FNV-1a hash 并将文件放入 electron-builder 缓存
+4. 重新执行打包：`node pack.js nsis` 或 `node pack.js portable`
+
+**备用方案**：使用 `dir` 目标（`npm run pack`），输出 `win-unpacked` 目录 + zip，不依赖 NSIS。
 
 ---
 
@@ -300,6 +313,7 @@ openclaw-model-config-app/
 ├── server.js             # Express API + 静态资源服务
 ├── pack.js               # 打包脚本
 ├── scripts/
+│   ├── setup-nsis-cache.cjs  # NSIS 缓存辅助脚本
 │   └── zip-release.ps1   # 生成 zip 压缩包
 ├── src/
 │   ├── App.jsx           # 主界面
@@ -313,6 +327,7 @@ openclaw-model-config-app/
 ├── release/              # 打包产物（gitignore）
 ├── icon.png              # 托盘/界面图标
 ├── build-icon.png        # 打包用 256×256 图标
+├── build-icon.ico        # NSIS 安装包图标
 └── package.json
 ```
 

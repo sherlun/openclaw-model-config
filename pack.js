@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 
-
 function run(cmd, args) {
   const result = spawnSync(cmd, args, {
     cwd: root,
@@ -18,7 +17,7 @@ function run(cmd, args) {
 run('npm', ['run', 'build'])
 
 const target = process.argv[2] || 'dir'
-run('npx', ['--yes', 'electron-builder@25.1.8', '--win', target])
+run('npx', ['--yes', 'electron-builder@latest', '--win', target])
 
 if (target === 'dir') {
   run('npm', ['run', 'zip'])

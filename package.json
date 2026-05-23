@@ -10,7 +10,7 @@
     "start": "node server.js",
     "electron": "electron .",
     "electron-dev": "concurrently \"vite\" \"node server.js\" \"electron .\"",
-    "pack": "node pack.js dir",
+    "pack": "node pack.js",
     "pack:portable": "node pack.js portable",
     "pack:installer": "node pack.js nsis",
     "zip": "powershell -ExecutionPolicy Bypass -File scripts/zip-release.ps1"
@@ -45,16 +45,38 @@
       "signAndEditExecutable": false,
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
           "arch": [
             "x64"
           ]
         }
       ],
-      "icon": "build-icon.png"
+      "icon": "build-icon.ico"
     },
     "portable": {
       "artifactName": "OpenClaw-Model-Config-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build-icon.ico",
+      "uninstallerIcon": "build-icon.ico",
+      "installerHeaderIcon": "build-icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenClaw Model Config"
     }
   }
 }
