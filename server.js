@@ -7,7 +7,7 @@ import os from 'os'
 import { execSync, spawn } from 'child_process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json')
+const OPENCLAW_CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json')
 const MODEL_CONFIG_DIR = path.join(os.homedir(), '.openclawModelConfig')
 const MODEL_CONFIG_PATH = path.join(MODEL_CONFIG_DIR, 'config.json')
 const EMPTY_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
@@ -19,14 +19,14 @@ app.use(express.json())
 // ── Config I/O ────────────────────────────────────────────
 
 function loadConfig() {
-  try { return fs.existsSync(CONFIG_PATH) ? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) : {} }
+  try { return fs.existsSync(OPENCLAW_CONFIG_PATH) ? JSON.parse(fs.readFileSync(OPENCLAW_CONFIG_PATH, 'utf-8')) : {} }
   catch { return {} }
 }
 
 function saveConfig(config) {
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true })
-  backupConfig()
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
+  fs.mkdirSync(path.dirname(OPENCLAW_CONFIG_PATH), { recursive: true })
+  backupOpenClawConfig()
+  fs.writeFileSync(OPENCLAW_CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
 }
 
 function loadModelConfig() {
@@ -42,23 +42,33 @@ function saveModelConfig(data) {
   fs.writeFileSync(MODEL_CONFIG_PATH, JSON.stringify(data, null, 2), 'utf-8')
 }
 
-function backupConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) return null
-  const backupDir = path.join(path.dirname(CONFIG_PATH), 'backups')
+function backupOpenClawConfig() {
+  if (!fs.existsSync(OPENCLAW_CONFIG_PATH)) return null
+  const backupDir = path.join(path.dirname(OPENCLAW_CONFIG_PATH), 'backups')
   fs.mkdirSync(backupDir, { recursive: true })
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_')
   const bp = path.join(backupDir, 'openclaw_' + ts + '.json')
-  fs.copyFileSync(CONFIG_PATH, bp)
+  fs.copyFileSync(OPENCLAW_CONFIG_PATH, bp)
+  return bp
+}
+
+function backupModelConfig() {
+  if (!fs.existsSync(MODEL_CONFIG_PATH)) return null
+  const backupDir = path.join(MODEL_CONFIG_DIR, 'backups')
+  fs.mkdirSync(backupDir, { recursive: true })
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_')
+  const bp = path.join(backupDir, 'config_' + ts + '.json')
+  fs.copyFileSync(MODEL_CONFIG_PATH, bp)
   return bp
 }
 
 function listBackups() {
-  const d = path.join(path.dirname(CONFIG_PATH), 'backups')
+  const d = path.join(MODEL_CONFIG_DIR, 'backups')
   if (!fs.existsSync(d)) return []
   return fs.readdirSync(d).filter(f => f.endsWith('.json')).sort().reverse().map(f => path.join(d, f))
 }
 
-function restoreBackup(bp) { fs.copyFileSync(bp, CONFIG_PATH) }
+function restoreBackup(bp) { fs.copyFileSync(bp, MODEL_CONFIG_PATH) }
 
 function makeKey(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_|_$/g, '')
@@ -68,11 +78,22 @@ function makeKey(name) {
 
 app.get('/api/config', (_req, res) => res.json(loadConfig()))
 app.post('/api/config', (req, res) => { saveConfig(req.body); res.json({ ok: true }) })
-app.get('/api/config-path', (_req, res) => res.json({ path: CONFIG_PATH }))
+app.get('/api/config-path', (_req, res) => res.json({ path: OPENCLAW_CONFIG_PATH }))
 
-app.post('/api/backup', (_req, res) => { const bp = backupConfig(); res.json({ ok: true, path: bp }) })
+app.post('/api/backup', (_req, res) => { const bp = backupModelConfig(); res.json({ ok: true, path: bp }) })
 app.get('/api/backups', (_req, res) => res.json(listBackups()))
 app.post('/api/restore', (req, res) => { restoreBackup(req.body.path); res.json({ ok: true }) })
+
+app.get('/api/backup-content', (req, res) => {
+  const bp = req.query.path
+  if (!bp || !fs.existsSync(bp)) return res.json({ ok: false, error: 'not found' })
+  try {
+    const content = JSON.parse(fs.readFileSync(bp, 'utf-8'))
+    res.json({ ok: true, content })
+  } catch (e) {
+    res.json({ ok: false, error: e.message })
+  }
+})
 
 app.get('/api/env/:name', (req, res) => { res.json({ value: process.env[req.params.name] || '' }) })
 

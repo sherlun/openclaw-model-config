@@ -437,8 +437,35 @@ function ModelForm({ modal, onSave, onClose }) {
 
 function RestoreDialog({ onRestore, onClose }) {
   const [backups, setBackups] = useState([])
+  const [preview, setPreview] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   useEffect(() => { api.listBackups().then(setBackups).catch(() => {}) }, [])
+
+  const handlePreview = async (bp) => {
+    setPreviewLoading(true)
+    const result = await api.getBackupContent(bp)
+    setPreview(result.ok ? result.content : { error: result.error })
+    setPreviewLoading(false)
+  }
+
   return (
-    <><div className="modal-header"><h2>选择要恢复的备份</h2><button className="modal-close" onClick={onClose}>×</button></div><div className="modal-body" style={{ maxHeight: 300, overflowY: 'auto' }}>{backups.length === 0 ? <p style={{ color: 'var(--text-tertiary)' }}>无可用备份</p> : backups.map(bp => { const fname = bp.split(/[\\/]/).pop(); return <div key={bp} className="dropdown-item" onClick={() => onRestore(bp)}>{fname}</div> })}</div></>
+    <><div className="modal-header"><h2>选择要恢复的备份</h2><button className="modal-close" onClick={onClose}>×</button></div>
+    <div className="modal-body" style={{ maxHeight: 480, overflowY: 'auto' }}>
+      {backups.length === 0 ? <p style={{ color: 'var(--text-tertiary)' }}>无可用备份</p> : backups.map(bp => {
+        const fname = bp.split(/[\\/]/).pop()
+        return <div key={bp} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: 'var(--radius-sm)', marginBottom: '4px' }}>
+          <span style={{ flex: 1, fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fname}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => handlePreview(bp)}>预览</button>
+          <button className="btn btn-accent btn-sm" onClick={() => onRestore(bp)}>恢复</button>
+        </div>
+      })}
+      {previewLoading && <p style={{ color: 'var(--text-tertiary)', fontSize: '12px', padding: '12px 0' }}>加载中...</p>}
+      {preview && !previewLoading && (
+        <div style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>备份内容预览</div>
+          <pre style={{ margin: 0, padding: '12px', fontSize: '11px', fontFamily: 'var(--font-mono)', lineHeight: 1.5, maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-secondary)', background: 'var(--bg-primary)' }}>{JSON.stringify(preview, null, 2)}</pre>
+        </div>
+      )}
+    </div></>
   )
 }

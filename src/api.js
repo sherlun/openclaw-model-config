@@ -25,6 +25,7 @@ export const api = {
   createBackup: () => post('/backup'),
   listBackups: () => get('/backups'),
   restoreBackup: (path) => post('/restore', { path }),
+  getBackupContent: (path) => get(`/backup-content?path=${encodeURIComponent(path)}`),
   scanEnvKeys: () => get('/env'),
   addProvider: (config, name, preset, apiKey) => post('/provider/add', { config, name, preset, apiKey }),
   updateProvider: (config, oldKey, newKey, baseUrl, apiKey) => post('/provider/update', { config, oldKey, newKey, baseUrl, apiKey }),
