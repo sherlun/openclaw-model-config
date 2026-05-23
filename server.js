@@ -345,4 +345,17 @@ if (fs.existsSync(DIST)) {
 }
 
 const PORT = 3001
-app.listen(PORT, () => console.log('API server running on http://localhost:' + PORT))
+
+export function startServer(port = PORT) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      console.log('API server running on http://localhost:' + port)
+      resolve(server)
+    })
+    server.on('error', reject)
+  })
+}
+
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('server.js')) {
+  startServer()
+}

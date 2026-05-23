@@ -1,9 +1,12 @@
-﻿import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron'
+﻿import { app, BrowserWindow, Tray, Menu, nativeImage, dialog } from 'electron'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import fs from 'fs'
+import { startServer } from './server.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const isDev = !app.isPackaged
+const APP_URL = isDev ? 'http://localhost:5173' : 'http://localhost:3001'
 
 app.commandLine.appendSwitch('disable-gpu')
 app.commandLine.appendSwitch('disable-gpu-sandbox')
@@ -69,9 +72,11 @@ function createWindow() {
     },
   })
 
-  mainWindow.loadURL('http://localhost:5173')
+  mainWindow.loadURL(APP_URL).catch((err) => {
+    dialog.showErrorBox('加载失败', `无法打开 ${APP_URL}\n${err.message}`)
+  })
 
-  if (!app.isPackaged) {
+  if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
@@ -92,7 +97,16 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (!isDev) {
+    try {
+      await startServer()
+    } catch (err) {
+      dialog.showErrorBox('启动失败', `后端服务启动失败：${err.message}`)
+      app.quit()
+      return
+    }
+  }
   createTray()
   createWindow()
 })

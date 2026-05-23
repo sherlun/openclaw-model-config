@@ -9,7 +9,11 @@
     "build": "vite build",
     "start": "node server.js",
     "electron": "temp-electron\\electron.exe .",
-    "electron-dev": "concurrently \"vite\" \"node server.js\" \"temp-electron\\electron.exe .\""
+    "electron-dev": "concurrently \"vite\" \"node server.js\" \"temp-electron\\electron.exe .\"",
+    "pack": "node pack.js dir",
+    "pack:portable": "node pack.js portable",
+    "pack:installer": "node pack.js nsis",
+    "zip": "powershell -ExecutionPolicy Bypass -File scripts/zip-release.ps1"
   },
   "dependencies": {
     "express": "^4.21.0",
@@ -21,5 +25,34 @@
     "@vitejs/plugin-react": "^4.3.0",
     "vite": "^5.4.0",
     "concurrently": "^9.0.0"
+  },
+  "build": {
+    "appId": "com.openclaw.modelconfig",
+    "productName": "OpenClaw Model Config",
+    "electronVersion": "28.3.3",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.js",
+      "server.js",
+      "icon.png",
+      "build-icon.png",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build-icon.png"
+    },
+    "portable": {
+      "artifactName": "OpenClaw-Model-Config-${version}-portable.exe"
+    }
   }
 }
