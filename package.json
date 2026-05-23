@@ -1,0 +1,25 @@
+{
+  "name": "openclaw-model-config",
+  "version": "1.0.0",
+  "description": "OpenClaw Model Config",
+  "type": "module",
+  "main": "electron-main.js",
+  "scripts": {
+    "dev": "node dev.js",
+    "build": "vite build",
+    "start": "node server.js",
+    "electron": "temp-electron\\electron.exe .",
+    "electron-dev": "concurrently \"vite\" \"node server.js\" \"temp-electron\\electron.exe .\""
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^5.4.0",
+    "concurrently": "^9.0.0"
+  }
+}
