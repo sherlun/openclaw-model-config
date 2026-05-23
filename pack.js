@@ -3,17 +3,14 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
-const electronDist = path.join(root, 'temp-electron')
+
 
 function run(cmd, args) {
   const result = spawnSync(cmd, args, {
     cwd: root,
     stdio: 'inherit',
     shell: true,
-    env: {
-      ...process.env,
-      ELECTRON_OVERRIDE_DIST_PATH: electronDist,
-    },
+    env: { ...process.env },
   })
   if (result.status !== 0) process.exit(result.status ?? 1)
 }

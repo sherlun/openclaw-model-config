@@ -8,8 +8,8 @@
     "dev": "node dev.js",
     "build": "vite build",
     "start": "node server.js",
-    "electron": "temp-electron\\electron.exe .",
-    "electron-dev": "concurrently \"vite\" \"node server.js\" \"temp-electron\\electron.exe .\"",
+    "electron": "electron .",
+    "electron-dev": "concurrently \"vite\" \"node server.js\" \"electron .\"",
     "pack": "node pack.js dir",
     "pack:portable": "node pack.js portable",
     "pack:installer": "node pack.js nsis",
@@ -46,7 +46,9 @@
       "target": [
         {
           "target": "dir",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build-icon.png"
