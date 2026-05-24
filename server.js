@@ -165,13 +165,13 @@ app.post('/api/import-to-openclaw', (req, res) => {
   if (!providers || Object.keys(providers).length === 0) {
     return res.json({ ok: false, error: 'no providers' })
   }
+  const backupPath = backupOpenClawConfig()
   const cfg = loadConfig()
   if (!cfg.models) cfg.models = { mode: 'merge', providers: {} }
   if (!cfg.models.providers) cfg.models.providers = {}
-  // Fully replace providers with only the imported content
   cfg.models.providers = providers
   saveConfig(cfg)
-  res.json({ ok: true, count: Object.keys(providers).length })
+  res.json({ ok: true, count: Object.keys(providers).length, backupPath })
 })
 
 app.post('/api/model/default', (req, res) => {

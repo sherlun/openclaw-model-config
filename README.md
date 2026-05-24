@@ -6,9 +6,11 @@ OpenClaw 模型配置桌面工具，用于可视化管理 `~/.openclaw/openclaw.
 
 - 管理 OpenClaw 配置文件（`~/.openclaw/openclaw.json`）
 - 添加 / 编辑 / 删除模型提供商与模型
-- 从预设快速添加常见 Provider（OpenAI、Anthropic 等）
+- 从预设快速添加常见 Provider（OpenAI、DeepSeek、Zhipu 等）
+- **配置模式**：从各平台勾选模型组合为预设，支持指定默认模型（写入 `agents.defaults.model.primary`）
+- **配置预设编辑**：可编辑已保存的预设，保存时自动覆盖同名配置
+- **导入预览**：导入到 OpenClaw 时预览当前配置和预设中的所有模型
 - 本地配置备份与恢复
-- 一键导入配置到 OpenClaw （多模型）
 - 启动 / 停止 OpenClaw Gateway，查看运行日志
 - 应用配置持久化到 `~/.openclawModelConfig/config.json`
 
@@ -317,7 +319,6 @@ openclaw-model-config-app/
 │   └── zip-release.ps1   # 生成 zip 压缩包
 ├── src/
 │   ├── App.jsx           # 主界面
-│   ├── App.jsx           # 主界面
 │   ├── api.js            # 前端 API 封装
 │   ├── main.jsx          # React 入口
 │   ├── index.css         # 全局样式
@@ -343,6 +344,22 @@ openclaw-model-config-app/
 | `npm start` | 生产模式启动 API + 静态页 |
 | `npm run pack` | 打包 exe + zip |
 | `npm run zip` | 仅压缩已有 win-unpacked |
+
+---
+
+## 更新日志
+
+### 2026-05-24
+
+- **配置模式集成默认模型**：在配置模式中可为每个预设指定默认模型（radio 选择），导入时自动写入 `agents.defaults.model.primary`
+- **配置预设编辑**：已保存的预设支持编辑，点击「编辑」回填勾选状态和默认模型，保存时自动覆盖同名配置
+- **导入对话框增强**：
+  - 打开时显示当前 OpenClaw 配置快照（各平台现有模型 + 默认模型）
+  - 每个预设可展开预览全部模型（按平台分组，默认模型高亮）
+  - 修复对话框打开延迟问题（改为异步加载配置，对话框立即弹出）
+- **移除独立"设为默认"按钮**：模型列表中原有的独立默认模型按钮已移除，统一通过配置模式→导入流程管理
+- **联动处理**：删除模型/平台时若涉及默认模型自动清除引用；重命名 Provider Key 时更新默认模型引用
+- **导入前自动备份**：每次导入到 OpenClaw 前自动备份当前配置到 `~/.openclaw/backups/`，导入成功 toast 显示备份文件名
 
 ---
 

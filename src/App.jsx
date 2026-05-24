@@ -56,6 +56,10 @@ export default function App() {
   const [showConfigMode, setShowConfigMode] = useState(false)
   const [pickedModels, setPickedModels] = useState({})
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [configDefaultModel, setConfigDefaultModel] = useState(null)
+  const [editingPresetName, setEditingPresetName] = useState(null)
+  const [openClawStatus, setOpenClawStatus] = useState(null)
+  const [importPreviewPreset, setImportPreviewPreset] = useState(null)
   const logRef = useRef(null)
   const sseRef = useRef(null)
 
@@ -229,17 +233,19 @@ export default function App() {
   }
 
   const togglePickModel = (providerKey, modelId) => {
-    setPickedModels(prev => { const next = { ...prev }; const k = providerKey + '/' + modelId; if (next[k]) delete next[k]; else next[k] = { providerKey, modelId }; return next })
+    const k = providerKey + '/' + modelId
+    setPickedModels(prev => { const next = { ...prev }; if (next[k]) delete next[k]; else next[k] = { providerKey, modelId }; return next })
+    setConfigDefaultModel(prev => prev === k ? null : prev)
   }
 
   const handleSaveConfigPreset = async () => {
     const picked = Object.values(pickedModels)
     if (picked.length === 0) { toast('请至少选择一个模型', 'error'); return }
-    const name = await showPrompt('配置名称', '如: 我的常用模型')
+    const name = editingPresetName || await showPrompt('配置名称', '如: 我的常用模型')
     if (!name) return
-    const preset = { name, models: picked, createdAt: new Date().toISOString() }
+    const preset = { name, models: picked, defaultModelRef: configDefaultModel, createdAt: new Date().toISOString() }
     const updated = [preset, ...configPresets.filter(p => p.name !== name)]
-    setConfigPresets(updated); scheduleSave(() => ({ appConfig, envNames, configPresets: updated })); toast('配置已保存:  ' + name, 'success')
+    setConfigPresets(updated); setEditingPresetName(null); scheduleSave(() => ({ appConfig, envNames, configPresets: updated })); toast('配置已保存:  ' + name, 'success')
   }
 
   const handleDeleteConfigPreset = (name) => {
@@ -247,9 +253,30 @@ export default function App() {
     setConfigPresets(updated); scheduleSave(() => ({ appConfig, envNames, configPresets: updated })); toast('已删除配置:  ' + name, 'info')
   }
 
+  const handleEditConfigPreset = (preset) => {
+    const picks = {}
+    for (const { providerKey, modelId } of preset.models) {
+      picks[providerKey + '/' + modelId] = { providerKey, modelId }
+    }
+    setPickedModels(picks)
+    setConfigDefaultModel(preset.defaultModelRef || null)
+    setEditingPresetName(preset.name)
+    setShowConfigMode(true)
+  }
+
   const handleImportToOpenClaw = () => {
     if (configPresets.length === 0) { toast('请先在配置模式中保存配置', 'error'); return }
+    setOpenClawStatus(null)
     setShowImportDialog(true)
+    api.loadConfig().then(cfg => {
+      const providers = {}
+      if (cfg?.models?.providers) {
+        for (const [key, prov] of Object.entries(cfg.models.providers)) {
+          providers[key] = (prov.models || []).map(m => m.id)
+        }
+      }
+      setOpenClawStatus({ providers, defaultModel: cfg?.agents?.defaults?.model?.primary || null })
+    }).catch(() => setOpenClawStatus(null))
   }
 
   const doImportToOpenClaw = async (preset) => {
@@ -264,8 +291,13 @@ export default function App() {
       providers[providerKey].models.push({ ...srcModel })
     }
     const result = await api.importToOpenClaw(providers)
-    if (result.ok) { toast('已导入 ' + result.count + ' 个平台到 OpenClaw', 'success'); setShowImportDialog(false) }
-    else toast('导入失败', 'error')
+    if (result.ok) {
+      if (preset.defaultModelRef) {
+        const cfg = await api.loadConfig()
+        await api.setDefaultModel(cfg, preset.defaultModelRef)
+      }
+      toast('已导入 ' + result.count + ' 个平台到 OpenClaw' + (result.backupPath ? '（已备份: ' + result.backupPath.split(/[\\/]/).pop() + '）' : ''), 'success'); setShowImportDialog(false)
+    } else toast('导入失败', 'error')
   }
 
   const handleBackup = async () => { try { const { path } = await api.createBackup(); toast(path ? '备份完成: ' + path : '备份失败', path ? 'success' : 'error') } catch { toast('备份失败', 'error') } }
@@ -422,8 +454,8 @@ export default function App() {
           <pre className="gateway-log" ref={logRef}>{gatewayLog}</pre>
         </div>
       </main>
-      {showConfigMode && <div className="modal-overlay" onClick={() => { setShowConfigMode(false); setPickedModels({}) }}><div className="modal" style={{ width: "640px", maxHeight: "85vh" }} onClick={e => e.stopPropagation()}><div className="modal-header"><h2>配置模式</h2><button className="modal-close" onClick={() => { setShowConfigMode(false); setPickedModels({}) }}>×</button></div><div className="modal-body" style={{ maxHeight: "50vh", overflowY: "auto" }}>{providers.length === 0 ? <p style={{ color: "var(--text-tertiary)" }}>暂无已添加的平台</p> : providers.map(pk => { const prov = appConfig.providers?.[pk]; const pms = prov?.models || []; return <div key={pk} style={{ marginBottom: "14px" }}><div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" }}>{pk}</div>{pms.length === 0 ? <p style={{ fontSize: "11px", color: "var(--text-tertiary)", paddingLeft: "8px" }}>该平台暂无模型</p> : pms.map(m => { const k = pk + "/" + m.id; const checked = !!pickedModels[k]; return <label key={m.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "5px 8px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: "12px", color: "var(--text-secondary)" }} onMouseEnter={e => e.currentTarget.style.background = "var(--bg-hover)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}><input type="checkbox" checked={checked} onChange={() => togglePickModel(pk, m.id)} style={{ accentColor: "var(--accent)", cursor: "pointer" }} /><span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", flex: 1 }}>{m.id}</span><span style={{ fontSize: "10.5px", color: "var(--text-tertiary)" }}>{m.name}</span>{m.reasoning ? <span className="col-tag">推理</span> : null}</label> })}</div> })}</div><div className="modal-footer" style={{ justifyContent: "space-between" }}><span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>已选 {Object.keys(pickedModels).length} 个模型</span><div style={{ display: "flex", gap: "6px" }}><button className="btn btn-primary btn-sm" onClick={handleSaveConfigPreset}>保存配置</button><button className="btn btn-ghost btn-sm" onClick={() => { setShowConfigMode(false); setPickedModels({}) }}>关闭</button></div></div><div style={{ borderTop: "1px solid var(--border-subtle)", padding: "14px 20px 18px" }}><div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "8px", color: "var(--text-secondary)" }}>已保存的配置</div>{configPresets.length === 0 ? <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>暂无</p> : configPresets.map(p => <div key={p.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: "var(--radius-sm)", fontSize: "11.5px", color: "var(--text-secondary)" }}><span style={{ flex: 1 }}><strong style={{ color: "var(--text-primary)" }}>{p.name}</strong><span style={{ color: "var(--text-tertiary)", marginLeft: "8px" }}>{p.models.length} 个模型</span></span><button className="btn btn-ghost btn-sm btn-danger" style={{ padding: "3px 8px", fontSize: "10.5px" }} onClick={() => handleDeleteConfigPreset(p.name)}>删除</button></div>)}</div></div></div>}
-      {showImportDialog && <div className="modal-overlay" onClick={() => setShowImportDialog(false)}><div className="modal" style={{ width: "500px" }} onClick={e => e.stopPropagation()}><div className="modal-header"><h2>导入到 OpenClaw</h2><button className="modal-close" onClick={() => setShowImportDialog(false)}>×</button></div><div className="modal-body" style={{ maxHeight: "50vh", overflowY: "auto" }}><p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "12px" }}>选择一个配置预设导入到 OpenClaw：</p>{configPresets.map(p => <div key={p.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", marginBottom: "6px" }}><div><div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)" }}>{p.name}</div><div style={{ fontSize: "10.5px", color: "var(--text-tertiary)", marginTop: "2px" }}>{p.models.length} 个模型</div></div><button className="btn btn-accent btn-sm" onClick={() => doImportToOpenClaw(p)}>导入</button></div>)}</div></div></div>}
+      {showConfigMode && <div className="modal-overlay" onClick={() => { setShowConfigMode(false); setPickedModels({}); setConfigDefaultModel(null); setEditingPresetName(null) }}><div className="modal" style={{ width: "680px", maxHeight: "85vh" }} onClick={e => e.stopPropagation()}><div className="modal-header"><h2>{editingPresetName ? '编辑配置: ' + editingPresetName : '配置模式'}</h2><button className="modal-close" onClick={() => { setShowConfigMode(false); setPickedModels({}); setConfigDefaultModel(null); setEditingPresetName(null) }}>×</button></div><div className="modal-body" style={{ maxHeight: "50vh", overflowY: "auto" }}><div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "8px" }}>勾选模型后，可指定一个为默认模型（★）</div>{providers.length === 0 ? <p style={{ color: "var(--text-tertiary)" }}>暂无已添加的平台</p> : providers.map(pk => { const prov = appConfig.providers?.[pk]; const pms = prov?.models || []; return <div key={pk} style={{ marginBottom: "14px" }}><div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" }}>{pk}</div>{pms.length === 0 ? <p style={{ fontSize: "11px", color: "var(--text-tertiary)", paddingLeft: "8px" }}>该平台暂无模型</p> : pms.map(m => { const k = pk + "/" + m.id; const checked = !!pickedModels[k]; const isDefault = configDefaultModel === k; return <label key={m.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "5px 8px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: "12px", color: checked ? "var(--text-primary)" : "var(--text-secondary)" }} onMouseEnter={e => e.currentTarget.style.background = "var(--bg-hover)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}><input type="checkbox" checked={checked} onChange={() => togglePickModel(pk, m.id)} style={{ accentColor: "var(--accent)", cursor: "pointer" }} /><input type="radio" name="config-default" checked={isDefault} disabled={!checked} onChange={() => setConfigDefaultModel(k)} style={{ accentColor: "#a855f7", cursor: checked ? "pointer" : "not-allowed", width: "13px", height: "13px" }} title="设为默认模型" /><span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", flex: 1 }}>{m.id}</span><span style={{ fontSize: "10.5px", color: "var(--text-tertiary)" }}>{m.name}</span>{m.reasoning ? <span className="col-tag">推理</span> : null}</label> })}</div> })}</div><div className="modal-footer" style={{ justifyContent: "space-between" }}><span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>已选 {Object.keys(pickedModels).length} 个模型{configDefaultModel ? <span style={{ color: "var(--accent-light)", marginLeft: "8px" }}>| 默认: {configDefaultModel}</span> : null}</span><div style={{ display: "flex", gap: "6px" }}><button className="btn btn-primary btn-sm" onClick={handleSaveConfigPreset}>保存配置</button><button className="btn btn-ghost btn-sm" onClick={() => { setShowConfigMode(false); setPickedModels({}); setConfigDefaultModel(null); setEditingPresetName(null) }}>关闭</button></div></div><div style={{ borderTop: "1px solid var(--border-subtle)", padding: "14px 20px 18px" }}><div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "8px", color: "var(--text-secondary)" }}>已保存的配置</div>{configPresets.length === 0 ? <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>暂无</p> : configPresets.map(p => <div key={p.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: "var(--radius-sm)", fontSize: "11.5px", color: "var(--text-secondary)" }}><span style={{ flex: 1 }}><strong style={{ color: "var(--text-primary)" }}>{p.name}</strong><span style={{ color: "var(--text-tertiary)", marginLeft: "8px" }}>{p.models.length} 个模型</span>{p.defaultModelRef ? <span className="col-default" style={{ marginLeft: "8px", fontSize: "10px" }}>默认: {p.defaultModelRef}</span> : null}</span><button className="btn btn-ghost btn-sm" style={{ padding: "3px 8px", fontSize: "10.5px", marginRight: "4px" }} onClick={() => handleEditConfigPreset(p)}>编辑</button><button className="btn btn-ghost btn-sm btn-danger" style={{ padding: "3px 8px", fontSize: "10.5px" }} onClick={() => handleDeleteConfigPreset(p.name)}>删除</button></div>)}</div></div></div>}
+      {showImportDialog && <div className="modal-overlay" onClick={() => { setShowImportDialog(false); setImportPreviewPreset(null) }}><div className="modal" style={{ width: "560px" }} onClick={e => e.stopPropagation()}><div className="modal-header"><h2>导入到 OpenClaw</h2><button className="modal-close" onClick={() => { setShowImportDialog(false); setImportPreviewPreset(null) }}>×</button></div><div className="modal-body" style={{ maxHeight: "55vh", overflowY: "auto" }}><div style={{ marginBottom: "16px", padding: "12px", background: "var(--bg-tertiary)", borderRadius: "var(--radius)", border: "1px solid var(--border-subtle)" }}><div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}><span>当前 OpenClaw 配置</span>{openClawStatus?.defaultModel ? <span className="col-default" style={{ fontSize: "10px" }}>默认: {openClawStatus.defaultModel}</span> : null}{openClawStatus && !openClawStatus.defaultModel ? <span style={{ fontSize: "10.5px", color: "var(--text-tertiary)", fontWeight: 400 }}>（未设默认模型）</span> : null}</div>{!openClawStatus ? <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>加载中...</p> : Object.keys(openClawStatus.providers).length === 0 ? <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>暂无模型，导入后将写入新配置</p> : Object.entries(openClawStatus.providers).map(([key, modelIds]) => <div key={key} style={{ marginBottom: "6px" }}><span style={{ fontSize: "11px", fontWeight: 600, color: "var(--accent-light)" }}>{key}</span><span style={{ fontSize: "10.5px", color: "var(--text-tertiary)", marginLeft: "8px" }}>{modelIds.join(', ')}</span></div>)}</div><div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "8px" }}>选择配置预设导入（将全量替换当前模型）：</div>{configPresets.map(p => { const expanded = importPreviewPreset === p.name; const grouped = {}; for (const {providerKey, modelId} of p.models) { if (!grouped[providerKey]) grouped[providerKey] = []; grouped[providerKey].push(modelId) } return <div key={p.name} style={{ marginBottom: "6px" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: expanded ? "var(--radius-sm) var(--radius-sm) 0 0" : "var(--radius-sm)", cursor: "pointer" }} onClick={() => setImportPreviewPreset(expanded ? null : p.name)}><div><div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)" }}>{p.name}</div><div style={{ fontSize: "10.5px", color: "var(--text-tertiary)", marginTop: "2px" }}>{p.models.length} 个模型{p.defaultModelRef ? <span className="col-default" style={{ marginLeft: "6px", fontSize: "10px" }}>默认: {p.defaultModelRef}</span> : null}</div></div><div style={{ display: "flex", gap: "4px" }}><button className="btn btn-ghost btn-sm" style={{ fontSize: "10.5px", padding: "3px 8px" }} onClick={e => { e.stopPropagation(); setImportPreviewPreset(expanded ? null : p.name) }}>{expanded ? '收起' : '预览'}</button><button className="btn btn-accent btn-sm" onClick={e => { e.stopPropagation(); doImportToOpenClaw(p) }}>导入</button></div></div>{expanded && <div style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderTop: "none", borderRadius: "0 0 var(--radius-sm) var(--radius-sm)", background: "var(--bg-tertiary)" }}>{Object.entries(grouped).map(([pk, ids]) => <div key={pk} style={{ marginBottom: "6px" }}><span style={{ fontSize: "11px", fontWeight: 600, color: "var(--accent-light)" }}>{pk}</span><div style={{ fontSize: "10.5px", color: "var(--text-secondary)", paddingLeft: "8px", marginTop: "2px" }}>{ids.map(id => <span key={id} style={{ display: "inline-block", marginRight: "8px", fontFamily: "var(--font-mono)", color: pk + "/" + id === p.defaultModelRef ? "var(--accent-light)" : "var(--text-tertiary)" }}>{id}{pk + "/" + id === p.defaultModelRef ? <span className="col-default" style={{ fontSize: "9px", marginLeft: "3px" }}>默认</span> : null}</span>)}</div></div>)}</div>}</div> })}</div></div></div>}
       {dialogState && <div className="modal-overlay" onClick={() => { dialogState.resolve(dialogState.type === "confirm" ? false : ""); setDialogState(null) }}><div className="modal" onClick={e => e.stopPropagation()}>{dialogState.type === "confirm" ? <><div className="modal-header"><h2>确认</h2></div><div className="modal-body"><p style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>{dialogState.message}</p></div><div className="modal-footer"><button className="btn btn-ghost" onClick={() => { dialogState.resolve(false); setDialogState(null) }}>取消</button><button className="btn btn-primary" onClick={() => { dialogState.resolve(true); setDialogState(null) }}>确定</button></div></> : dialogState.type === "prompt" ? <PromptDialog title={dialogState.title} hint={dialogState.hint} onSubmit={val => { dialogState.resolve(val); setDialogState(null) }} onCancel={() => { dialogState.resolve(""); setDialogState(null) }} /> : null}</div></div>}
       {modal && <div className="modal-overlay" onClick={() => setModal(null)}><div className="modal" onClick={e => e.stopPropagation()}>{modal.type === "model" ? <ModelForm modal={modal} onSave={handleSaveModel} onClose={() => setModal(null)} /> : modal.type === "restore" ? <RestoreDialog onRestore={handleDoRestore} onClose={() => setModal(null)} /> : null}</div></div>}
       <div className="toast-container">{toasts.map(t => <div key={t.id} className={"toast " + t.type}>{t.msg}</div>)}</div>
