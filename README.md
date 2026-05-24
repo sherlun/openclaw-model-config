@@ -7,8 +7,8 @@ OpenClaw 模型配置桌面工具，用于可视化管理 `~/.openclaw/openclaw.
 - 管理 OpenClaw 配置文件（`~/.openclaw/openclaw.json`）
 - 添加 / 编辑 / 删除模型提供商与模型
 - 从预设快速添加常见 Provider（OpenAI、Anthropic 等）
-- 配置备份与恢复
-- 一键导入配置到 OpenClaw
+- 本地配置备份与恢复
+- 一键导入配置到 OpenClaw （多模型）
 - 启动 / 停止 OpenClaw Gateway，查看运行日志
 - 应用配置持久化到 `~/.openclawModelConfig/config.json`
 
