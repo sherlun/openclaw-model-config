@@ -34,6 +34,7 @@ export const api = {
   updateModel: (config, providerKey, modelId, data) => post('/model/update', { config, providerKey, modelId, data }),
   removeModel: (config, providerKey, modelId) => post('/model/remove', { config, providerKey, modelId }),
   setDefaultModel: (config, modelRef) => post('/model/default', { config, modelRef }),
+  gatewayStatus: () => get('/gateway/status'),
   launchGateway: () => post('/gateway/launch'),
   stopGateway: () => post('/gateway/stop'),
   lookupEnv: (name) => get(`/env/${encodeURIComponent(name)}`),

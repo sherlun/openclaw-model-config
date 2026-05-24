@@ -57,6 +57,7 @@ export default function App() {
   const [pickedModels, setPickedModels] = useState({})
   const [showImportDialog, setShowImportDialog] = useState(false)
   const logRef = useRef(null)
+  const sseRef = useRef(null)
 
   const showPrompt = (title, hint = '') => new Promise(resolve => { setDialogState({ type: 'prompt', title, hint, resolve }) })
   const showConfirm = (message) => new Promise(resolve => { setDialogState({ type: 'confirm', message, resolve }) })
@@ -64,12 +65,6 @@ export default function App() {
   const toast = useCallback((msg, type='info') => {
     const id = Date.now(); setToasts(t => [...t, { id, msg, type }])
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000)
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/gateway/status').then(r => r.json()).then(s => {
-      if (s.running) { setGatewayRunning(true); setGatewayLog(s.log); if (!s.external) connectSSE() }
-    }).catch(() => {})
   }, [])
 
   // Load saved config: try file API first, fall back to localStorage
@@ -95,20 +90,40 @@ export default function App() {
     })
   }, [])
 
-  const connectSSE = () => {
+  const connectSSE = useCallback(() => {
+    if (sseRef.current) { sseRef.current.close(); sseRef.current = null }
     const es = new EventSource('/api/gateway/stream')
     es.onmessage = (e) => {
       try {
         const d = JSON.parse(e.data)
         if (d.type === 'output') setGatewayLog(l => l + d.text)
-        else if (d.type === 'exit') { setGatewayLog(l => l + '\n--- Gateway 已退出 (code=' + d.code + ') ---\n'); setGatewayRunning(false); es.close() }
-        else if (d.type === 'error') { setGatewayLog(l => l + '[错误] ' + d.text + '\n'); setGatewayRunning(false); es.close() }
+        else if (d.type === 'exit') { setGatewayLog(l => l + '\n--- Gateway 已退出 (code=' + d.code + ') ---\n'); setGatewayRunning(false); es.close(); sseRef.current = null }
+        else if (d.type === 'error') { setGatewayLog(l => l + '[错误] ' + d.text + '\n'); setGatewayRunning(false); es.close(); sseRef.current = null }
         else if (d.type === 'connected' && d.running) setGatewayRunning(true)
       } catch {}
     }
-    es.onerror = () => { setGatewayRunning(false); es.close() }
-    return es
-  }
+    es.onerror = () => { setGatewayRunning(false) }
+    sseRef.current = es
+  }, [])
+
+  useEffect(() => {
+    let timer
+    const check = async () => {
+      try {
+        const s = await api.gatewayStatus()
+        if (s.running) {
+          setGatewayRunning(true)
+          if (!sseRef.current || sseRef.current.readyState === EventSource.CLOSED) connectSSE()
+        } else {
+          setGatewayRunning(false)
+          if (sseRef.current) { sseRef.current.close(); sseRef.current = null }
+        }
+      } catch {}
+    }
+    check()
+    timer = setInterval(check, 15000)
+    return () => { clearInterval(timer); if (sseRef.current) { sseRef.current.close(); sseRef.current = null } }
+  }, [connectSSE])
 
   const persist = (cfg) => { setAppConfig({ ...cfg }); scheduleSave(() => ({ appConfig: cfg, envNames, configPresets })) }
   const providers = Object.keys(appConfig.providers || {})
@@ -121,7 +136,7 @@ export default function App() {
     const models = preset.models.map(m => ({
       id: m.id, name: m.name, contextWindow: m.contextWindow,
       maxTokens: m.maxTokens, input: m.input || ['text'],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      cost: m.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       ...(m.reasoning ? { reasoning: true } : {})
     }))
     const next = { ...appConfig }
@@ -238,7 +253,7 @@ export default function App() {
   }
 
   const doImportToOpenClaw = async (preset) => {
-    if (!await showConfirm('确定要将 "' + preset.name + '" 导入到 OpenClaw 吗？（覆盖模式）')) return
+    if (!await showConfirm('确定要将 "' + preset.name + '" 导入到 OpenClaw 吗？（将替换 models.providers，不影响其他配置）')) return
     const providers = {}
     for (const { providerKey, modelId } of preset.models) {
       const srcProv = appConfig.providers[providerKey]
@@ -370,10 +385,10 @@ export default function App() {
               </div>
               <div className="models-table-wrapper">
                 <table className="models-table">
-                  <thead><tr><th></th><th>Model ID</th><th>显示名称</th><th>上下文窗口</th><th>最大 Token</th><th>特性</th></tr></thead>
+                  <thead><tr><th></th><th>Model ID</th><th>显示名称</th><th>上下文窗口</th><th>最大 Token</th><th>输入 $/1M</th><th>输出 $/1M</th><th>特性</th></tr></thead>
                   <tbody>
                     {models.length === 0 ? (
-                      <tr><td colSpan="6" className="no-models">暂无模型，点击 + 添加模型 开始</td></tr>
+                      <tr><td colSpan="8" className="no-models">暂无模型，点击 + 添加模型 开始</td></tr>
                     ) : models.map(m => (
                       <tr key={m.id} className={m.id === selectedModel ? "selected" : ""} onClick={() => setSelectedModel(m.id)}>
                         <td className="col-radio"><input type="radio" name="model-select" checked={m.id === selectedModel} onChange={() => setSelectedModel(m.id)} /></td>
@@ -381,6 +396,8 @@ export default function App() {
                         <td>{m.name}</td>
                         <td>{fmtContext(m.contextWindow)}</td>
                         <td>{m.maxTokens}</td>
+                        <td>{(m.cost?.input || 0) === 0 ? '-' : '$' + (m.cost.input).toFixed(4)}</td>
+                        <td>{(m.cost?.output || 0) === 0 ? '-' : '$' + (m.cost.output).toFixed(4)}</td>
                         <td>{m.reasoning ? <span className="col-tag">推理</span> : null}</td>
                       </tr>
                     ))}
@@ -425,11 +442,20 @@ function PromptDialog({ title, hint, onSubmit, onCancel }) {
 function ModelForm({ modal, onSave, onClose }) {
   const { isNew, existing = {} } = modal
   const idRef = useRef(null)
+  const cost = existing.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
   useEffect(() => { idRef.current?.focus() }, [])
   return (
-    <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.target); const id = fd.get('id').trim(); if (!id) return; onSave({ id, name: fd.get('name').trim() || id, contextWindow: parseInt(fd.get('context')) || 128000, maxTokens: parseInt(fd.get('tokens')) || 8192, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ...(fd.get('reasoning') ? { reasoning: true } : {}) }) }}>
+    <form onSubmit={e => { e.preventDefault(); const fd = new FormData(e.target); const id = fd.get('id').trim(); if (!id) return; onSave({ id, name: fd.get('name').trim() || id, contextWindow: parseInt(fd.get('context')) || 128000, maxTokens: parseInt(fd.get('tokens')) || 8192, input: ['text'], cost: { input: parseFloat(fd.get('costInput')) || 0, output: parseFloat(fd.get('costOutput')) || 0, cacheRead: parseFloat(fd.get('costCacheRead')) || 0, cacheWrite: parseFloat(fd.get('costCacheWrite')) || 0 }, ...(fd.get('reasoning') ? { reasoning: true } : {}) }) }}>
       <div className="modal-header"><h2>{isNew ? '添加模型' : '编辑模型'}</h2><button type="button" className="modal-close" onClick={onClose}>×</button></div>
-      <div className="modal-body"><div className="form-group"><span className="field-label">Model ID</span><input name="id" className="input" defaultValue={existing.id || ''} ref={idRef} /></div><div className="form-group"><span className="field-label">显示名称</span><input name="name" className="input" defaultValue={existing.name || ''} /></div><div className="form-row"><div className="form-group flex-1"><span className="field-label">上下文窗口</span><input name="context" type="number" className="input" defaultValue={existing.contextWindow || 128000} /></div><div className="form-group flex-1"><span className="field-label">最大 Token</span><input name="tokens" type="number" className="input" defaultValue={existing.maxTokens || 8192} /></div></div><label className="checkbox-group"><input type="checkbox" name="reasoning" defaultChecked={!!existing.reasoning} /><span>推理模型 (reasoning)</span></label></div>
+      <div className="modal-body"><div className="form-group"><span className="field-label">Model ID</span><input name="id" className="input" defaultValue={existing.id || ''} ref={idRef} /></div><div className="form-group"><span className="field-label">显示名称</span><input name="name" className="input" defaultValue={existing.name || ''} /></div><div className="form-row"><div className="form-group flex-1"><span className="field-label">上下文窗口</span><input name="context" type="number" className="input" defaultValue={existing.contextWindow || 128000} /></div><div className="form-group flex-1"><span className="field-label">最大 Token</span><input name="tokens" type="number" className="input" defaultValue={existing.maxTokens || 8192} /></div></div>
+      <div className="form-group"><span className="field-label" style={{marginBottom:'6px'}}>Token 价格 ($/1M tokens)</span>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 10px'}}>
+          <div><span className="field-label" style={{fontSize:'10px'}}>输入价格</span><input name="costInput" type="number" step="0.01" min="0" className="input" defaultValue={cost.input} placeholder="0" /></div>
+          <div><span className="field-label" style={{fontSize:'10px'}}>输出价格</span><input name="costOutput" type="number" step="0.01" min="0" className="input" defaultValue={cost.output} placeholder="0" /></div>
+          <div><span className="field-label" style={{fontSize:'10px'}}>缓存读取价格</span><input name="costCacheRead" type="number" step="0.01" min="0" className="input" defaultValue={cost.cacheRead} placeholder="0" /></div>
+          <div><span className="field-label" style={{fontSize:'10px'}}>缓存写入价格</span><input name="costCacheWrite" type="number" step="0.01" min="0" className="input" defaultValue={cost.cacheWrite} placeholder="0" /></div>
+        </div>
+      </div><label className="checkbox-group"><input type="checkbox" name="reasoning" defaultChecked={!!existing.reasoning} /><span>推理模型 (reasoning)</span></label></div>
       <div className="modal-footer"><button type="button" className="btn btn-ghost" onClick={onClose}>取消</button><button type="submit" className="btn btn-primary">保存</button></div>
     </form>
   )

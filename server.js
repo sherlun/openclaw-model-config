@@ -168,7 +168,7 @@ app.post('/api/import-to-openclaw', (req, res) => {
   const cfg = loadConfig()
   if (!cfg.models) cfg.models = { mode: 'merge', providers: {} }
   if (!cfg.models.providers) cfg.models.providers = {}
-  // Overwrite: replace entire providers config
+  // Fully replace providers with only the imported content
   cfg.models.providers = providers
   saveConfig(cfg)
   res.json({ ok: true, count: Object.keys(providers).length })
