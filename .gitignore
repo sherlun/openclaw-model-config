@@ -1,0 +1,41 @@
+﻿# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+
+# Electron artifacts
+*.asar
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Electron debug
+openclaw-config-debug.log
+
+# Package lock (generated)
+package-lock.json
+
+# npm pack output
+*.tgz
+.gitignore
+release
